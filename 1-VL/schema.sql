@@ -5,8 +5,9 @@ CREATE TABLE Anbieter (
     Organisationsform VARCHAR,
     API_URL VARCHAR UNIQUE,
     Lizenz VARCHAR,
-
+-- Es sollen nur Anbieter abgebildet werden können, die in Deutschland umsatzsteuerpflichtig sind. Beachten Sie hierzu die Regeln zur Formatierung von Umsatzsteuer-Identifikationsnummern. Außerdem ist die Angabe von Name und Website verpflichtend.
     CHECK (regexp_full_match(UStID, 'DE[0-9]{9}')),
+--Für Webseiten und API-URLs soll sichergestellt werden, dass diese immer das HTTP-Protokoll (oder die gesicherte Version davon) benutzen. Alle API-URLs müssen unterschiedlich sein.
     CHECK (regexp_full_match(Website, 'https?://.*')),
     CHECK (API_URL IS NULL OR regexp_full_match(API_URL, 'https?://.*'))
 );
@@ -18,6 +19,7 @@ CREATE TABLE Bundesland (
     
     CHECK (length(Name) > 0),
 
+-- Bundesland-Kürzel sollen nach dem ISO 3166-2 Standard formatiert werden. Außerdem soll sichergestellt werden, dass nur deutsche Bundesländer eingefügt werden können. Beachten Sie, dass alle Bundesländer einen Namen haben müssen.
     CHECK (regexp_full_match(Kürzel, 'DE-[A-Z]{2}')),
     CHECK (Kürzel IN (
         'DE-BB', 'DE-BE', 'DE-BW', 'DE-BY',
@@ -41,6 +43,7 @@ CREATE TABLE Koordinate (
 
     CHECK (Latitude BETWEEN -90 AND 90),
     CHECK (Longitude BETWEEN -180 AND 180),
+    CHECK (EPSG_Code = 4326),
     CHECK (length(GeoHash) <= 12)
 );
 
@@ -54,8 +57,8 @@ CREATE TABLE Station (
 
     FOREIGN KEY (UStID) REFERENCES Anbieter(UStID),
     FOREIGN KEY (Latitude, Longitude) REFERENCES Koordinate(Latitude, Longitude),
-
-    CHECK (Höhe BETWEEN -430 AND 8849)
+    
+    CHECK (Höhe BETWEEN -11000 AND 9000)
 );
 
 
@@ -69,8 +72,7 @@ CREATE TABLE verbunden_mit (
     FOREIGN KEY (StationA_ID) REFERENCES Station(ID),
     FOREIGN KEY (StationB_ID) REFERENCES Station(ID),
 
-    CHECK (Abstand >= 0),
-    CHECK (StationA_ID < StationB_ID)
+    CHECK (Abstand > 0),
 );
 
 CREATE TABLE arbeitet_in (
@@ -96,14 +98,37 @@ CREATE TABLE Polygon (
 
 CREATE TABLE Messwert (
     ID INTEGER NOT NULL,
-    Zeitpunkt TIMESTAMP NOT NULL,
+    Zeitpunkt TIMESTAMP,
     Messwert STRUCT(Wert DOUBLE, Einheit VARCHAR) NOT NULL,
     Typ VARCHAR NOT NULL,
 
     Art VARCHAR,
     Richtung SMALLINT,
     hat_schatten BOOLEAN,
+    
+    PRIMARY KEY(ID, ZEITPUNKT),
+    FOREIGN KEY (ID) REFERENCES Station(ID),
 
-    PRIMARY KEY (ID, Zeitpunkt),
-    FOREIGN KEY (ID) REFERENCES Station(ID)
+    CHECK (Typ IN ('Niederschlag', 'Sonne', 'Temperatur', 'Wind')),
+
+    CHECK (struct_extract("Messwert", 'Einheit') IN ('A', 'cd', 'K', 'kg', 'm', 'mol', 's')),
+
+    CHECK (
+        Typ = 'Wind'
+        OR (Typ = 'Niederschlag' AND struct_extract("Messwert", 'Einheit') = 'm')
+        OR (Typ = 'Sonne' AND struct_extract("Messwert", 'Einheit') = 'cd')
+        OR (Typ = 'Temperatur' AND struct_extract("Messwert", 'Einheit') = 'K')
+    ),
+
+    CHECK (Richtung IS NULL OR Richtung BETWEEN 0 AND 359),
+
+    CHECK (
+        (Typ = 'Niederschlag' AND Art IS NOT NULL AND Richtung IS NULL AND hat_schatten IS NULL)
+        OR
+        (Typ = 'Wind' AND Richtung IS NOT NULL AND Art IS NULL AND hat_schatten IS NULL)
+        OR
+        (Typ = 'Sonne' AND hat_schatten IS NOT NULL AND Art IS NULL AND Richtung IS NULL)
+        OR
+        (Typ = 'Temperatur' AND Art IS NULL AND Richtung IS NULL AND hat_schatten IS NULL)
+    )
 );
