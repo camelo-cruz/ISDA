@@ -96,33 +96,35 @@ CREATE TABLE Polygon (
     FOREIGN KEY (Latitude, Longitude) REFERENCES Koordinate(Latitude, Longitude)
 );
 
+CREATE TYPE EinheitTyp AS ENUM ('A', 'cd', 'K', 'kg', 'm', 'mol', 's');
+
 CREATE TABLE Messwert (
     ID INTEGER NOT NULL,
-    Zeitpunkt TIMESTAMP,
-    Messwert STRUCT(Wert DOUBLE, Einheit VARCHAR) NOT NULL,
+    Zeitpunkt TIMESTAMP NOT NULL,
+    Messwert STRUCT(Wert REAL, Einheit EinheitTyp) NOT NULL,
     Typ VARCHAR NOT NULL,
 
     Art VARCHAR,
     Richtung SMALLINT,
     hat_schatten BOOLEAN,
-    
-    PRIMARY KEY(ID, ZEITPUNKT),
+
+    PRIMARY KEY (ID, Zeitpunkt),
     FOREIGN KEY (ID) REFERENCES Station(ID),
 
-    CHECK (Typ IN ('Niederschlag', 'Sonne', 'Temperatur', 'Wind')),
-
-    CHECK (struct_extract("Messwert", 'Einheit') IN ('A', 'cd', 'K', 'kg', 'm', 'mol', 's')),
+    CHECK (Typ IN ('Messwert', 'Niederschlag', 'Sonne', 'Temperatur', 'Wind')),
 
     CHECK (
-        Typ = 'Wind'
-        OR (Typ = 'Niederschlag' AND struct_extract("Messwert", 'Einheit') = 'm')
-        OR (Typ = 'Sonne' AND struct_extract("Messwert", 'Einheit') = 'cd')
-        OR (Typ = 'Temperatur' AND struct_extract("Messwert", 'Einheit') = 'K')
+        Typ IN ('Messwert', 'Wind')
+        OR (Typ = 'Niederschlag' AND struct_extract(Messwert, 'Einheit') = 'm')
+        OR (Typ = 'Sonne' AND struct_extract(Messwert, 'Einheit') = 'cd')
+        OR (Typ = 'Temperatur' AND struct_extract(Messwert, 'Einheit') = 'K')
     ),
 
     CHECK (Richtung IS NULL OR Richtung BETWEEN 0 AND 359),
 
     CHECK (
+        (Typ = 'Messwert' AND Art IS NULL AND Richtung IS NULL AND hat_schatten IS NULL)
+        OR
         (Typ = 'Niederschlag' AND Art IS NOT NULL AND Richtung IS NULL AND hat_schatten IS NULL)
         OR
         (Typ = 'Wind' AND Richtung IS NOT NULL AND Art IS NULL AND hat_schatten IS NULL)
